@@ -29,6 +29,7 @@ Windows 11 Dev Drive uses the ReFS filesystem with Copy-on-Write (CoW) support, 
 - Windows 11 with a Dev Drive configured
 - PowerShell 5.1 or later
 - Administrator privileges
+- **Optional**: PwshSpectreConsole module for enhanced terminal output (script will offer to install)
 
 ## Usage
 
@@ -82,6 +83,24 @@ When run again, the script detects existing configuration and offers:
 4. **Migrates** existing cache data to the new location
 5. **Verifies** the configuration is correct
 6. **Optionally deletes** old cache folders after successful migration
+
+## Enhanced Terminal Output
+
+The script supports **rich terminal output** using the PwshSpectreConsole module, providing:
+
+- ✨ **Styled tables** for verification reports with clear status indicators
+- 📊 **Panels** for section headers and important notes
+- ⏱️ **Status spinners** during package manager detection
+- 🎨 **Color-coded output** with Unicode symbols (✓, ⚠, ✗)
+- 📐 **Rounded borders** and professional formatting
+
+When you first run the script, it will detect if PwshSpectreConsole is installed. If not, it will offer to install it automatically. You can also install it manually:
+
+```powershell
+Install-Module PwshSpectreConsole -Scope CurrentUser
+```
+
+The script gracefully falls back to basic output if the module is not available or the installation is declined.
 
 ## Verification Report
 

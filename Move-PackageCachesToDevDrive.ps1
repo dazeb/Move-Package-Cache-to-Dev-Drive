@@ -26,19 +26,112 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Colors for output
-function Write-Status { param($Message) Write-Host "[*] " -ForegroundColor Cyan -NoNewline; Write-Host $Message }
-function Write-Success { param($Message) Write-Host "[+] " -ForegroundColor Green -NoNewline; Write-Host $Message }
-function Write-Warning { param($Message) Write-Host "[!] " -ForegroundColor Yellow -NoNewline; Write-Host $Message }
-function Write-Error { param($Message) Write-Host "[-] " -ForegroundColor Red -NoNewline; Write-Host $Message }
-function Write-Info { param($Message) Write-Host "    " -NoNewline; Write-Host $Message -ForegroundColor Gray }
+# Check for PwshSpectreConsole module
+if (-not (Get-Module -ListAvailable -Name PwshSpectreConsole)) {
+    Write-Host ""
+    Write-Host "The PwshSpectreConsole module is required for enhanced terminal output." -ForegroundColor Yellow
+    Write-Host ""
+    $install = Read-Host "Would you like to install it now? (Y/N)"
+
+    if ($install -match '^[Yy]') {
+        Write-Host "Installing PwshSpectreConsole..." -ForegroundColor Cyan
+        try {
+            Install-Module PwshSpectreConsole -Scope CurrentUser -Force -AllowClobber
+            Write-Host "Installation successful!" -ForegroundColor Green
+            Write-Host ""
+        } catch {
+            Write-Host "Failed to install module. Continuing with basic output..." -ForegroundColor Red
+            Write-Host ""
+            $global:UseSpectreConsole = $false
+        }
+    } else {
+        Write-Host "Continuing with basic output..." -ForegroundColor Gray
+        Write-Host ""
+        $global:UseSpectreConsole = $false
+    }
+}
+
+# Import module
+try {
+    Import-Module PwshSpectreConsole -ErrorAction Stop
+    $global:UseSpectreConsole = $true
+    # Suppress encoding warning for cleaner output
+    $env:IgnoreSpectreEncoding = $true
+} catch {
+    $global:UseSpectreConsole = $false
+}
+
+# Output functions with Spectre.Console support
+function Write-Status {
+    param($Message)
+    if ($global:UseSpectreConsole) {
+        Write-SpectreHost "[cyan]●[/] $Message"
+    } else {
+        Write-Host "[*] " -ForegroundColor Cyan -NoNewline; Write-Host $Message
+    }
+}
+
+function Write-Success {
+    param($Message)
+    if ($global:UseSpectreConsole) {
+        Write-SpectreHost "[green]✓[/] $Message"
+    } else {
+        Write-Host "[+] " -ForegroundColor Green -NoNewline; Write-Host $Message
+    }
+}
+
+function Write-Warning {
+    param($Message)
+    if ($global:UseSpectreConsole) {
+        Write-SpectreHost "[yellow]⚠[/] $Message"
+    } else {
+        Write-Host "[!] " -ForegroundColor Yellow -NoNewline; Write-Host $Message
+    }
+}
+
+function Write-Error {
+    param($Message)
+    if ($global:UseSpectreConsole) {
+        Write-SpectreHost "[red]✗[/] $Message"
+    } else {
+        Write-Host "[-] " -ForegroundColor Red -NoNewline; Write-Host $Message
+    }
+}
+
+function Write-Info {
+    param($Message)
+    if ($global:UseSpectreConsole) {
+        Write-SpectreHost "  [grey]$Message[/]"
+    } else {
+        Write-Host "    " -NoNewline; Write-Host $Message -ForegroundColor Gray
+    }
+}
+
+function Write-SectionHeader {
+    param($Title)
+    Write-Host ""
+    if ($global:UseSpectreConsole) {
+        Write-SpectreRule -Title $Title
+    } else {
+        Write-Host "================================================================" -ForegroundColor Cyan
+        Write-Host "       $Title" -ForegroundColor Cyan
+        Write-Host "================================================================" -ForegroundColor Cyan
+    }
+    Write-Host ""
+}
 
 # Banner
-Write-Host ""
-Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "       Package Cache to Dev Drive Migration Script" -ForegroundColor Cyan
-Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host ""
+if ($global:UseSpectreConsole) {
+    Write-Host ""
+    Write-SpectreRule -Title "Package Cache to Dev Drive Migration"
+    Write-Host ""
+} else {
+    Write-Host ""
+    Write-Host "================================================================" -ForegroundColor Cyan
+    Write-Host "       Package Cache to Dev Drive Migration Script" -ForegroundColor Cyan
+    Write-Host "================================================================" -ForegroundColor Cyan
+    Write-Host ""
+}
 
 # Username for NuGet path (auto-detected)
 $currentUser = $env:USERNAME
@@ -129,20 +222,20 @@ if ($VerifyOnly -and $existingEnvVars.Count -gt 0) {
 
 if (-not $devDrive) {
     while (-not $devDrive) {
-        $input = Read-Host "Enter your Dev Drive path (e.g., D: or D:\)"
+        $userInput = Read-Host "Enter your Dev Drive path (e.g., D: or D:\)"
 
         # Normalize the path
-        $input = $input.TrimEnd('\')
-        if ($input -match '^[A-Za-z]:?$') {
-            $input = $input.TrimEnd(':') + ":"
+        $userInput = $userInput.TrimEnd('\')
+        if ($userInput -match '^[A-Za-z]:?$') {
+            $userInput = $userInput.TrimEnd(':') + ":"
         }
 
         # Validate the drive exists
-        if (Test-Path $input) {
-            $devDrive = $input
+        if (Test-Path $userInput) {
+            $devDrive = $userInput
             Write-Success "Using Dev Drive: $devDrive"
         } else {
-            Write-Error "Path '$input' does not exist. Please enter a valid drive path."
+            Write-Error "Path '$userInput' does not exist. Please enter a valid drive path."
         }
     }
     Write-Host ""
@@ -466,18 +559,33 @@ function Set-EnvironmentVariableSystem {
 }
 
 # Scan and process each package manager
-Write-Host "Scanning for installed package managers..." -ForegroundColor Cyan
-Write-Host ""
-
 $detectedManagers = @()
 $notDetectedManagers = @()
+
+if ($global:UseSpectreConsole) {
+    Write-Status "Scanning for installed package managers..."
+    Write-Host ""
+}
 
 foreach ($pm in $packageManagers) {
     if (Test-PackageManagerInstalled $pm) {
         $detectedManagers += $pm
-        Write-Success "$($pm.Name) - DETECTED"
+        if ($global:UseSpectreConsole) {
+            Write-Success "$($pm.Name) - DETECTED"
+        }
     } else {
         $notDetectedManagers += $pm
+        if ($global:UseSpectreConsole) {
+            Write-Info "$($pm.Name) - not found"
+        }
+    }
+}
+
+if (-not $global:UseSpectreConsole) {
+    foreach ($pm in $detectedManagers) {
+        Write-Success "$($pm.Name) - DETECTED"
+    }
+    foreach ($pm in $notDetectedManagers) {
         Write-Info "$($pm.Name) - not found"
     }
 }
@@ -492,10 +600,7 @@ if ($detectedManagers.Count -eq 0) {
 
 # Skip processing if VerifyOnly mode
 if (-not $VerifyOnly) {
-    Write-Host "================================================================" -ForegroundColor Cyan
-    Write-Host "       Processing Detected Package Managers" -ForegroundColor Cyan
-    Write-Host "================================================================" -ForegroundColor Cyan
-    Write-Host ""
+    Write-SectionHeader "Processing Detected Package Managers"
 
     $processedCount = 0
     $skippedCount = 0
@@ -551,10 +656,7 @@ if (-not $VerifyOnly) {
     }
 
     # Summary
-    Write-Host "================================================================" -ForegroundColor Cyan
-    Write-Host "                         Summary" -ForegroundColor Cyan
-    Write-Host "================================================================" -ForegroundColor Cyan
-    Write-Host ""
+    Write-SectionHeader "Summary"
     Write-Success "Processed: $processedCount package manager(s)"
     if ($skippedCount -gt 0) {
         Write-Warning "Skipped: $skippedCount package manager(s) due to errors"
@@ -575,9 +677,14 @@ if (-not $VerifyOnly) {
 
     # Prompt to delete old cache folders if any were migrated
     if ($script:migratedPaths.Count -gt 0 -and -not $WhatIf) {
-        Write-Host "================================================================" -ForegroundColor Magenta
-        Write-Host "              Delete Old Cache Folders?" -ForegroundColor Magenta
-        Write-Host "================================================================" -ForegroundColor Magenta
+        Write-Host ""
+        if ($global:UseSpectreConsole) {
+            Write-SpectreRule -Title "Delete Old Cache Folders?"
+        } else {
+            Write-Host "================================================================" -ForegroundColor Magenta
+            Write-Host "              Delete Old Cache Folders?" -ForegroundColor Magenta
+            Write-Host "================================================================" -ForegroundColor Magenta
+        }
         Write-Host ""
         Write-Status "The following old cache folders were successfully migrated:"
         Write-Host ""
@@ -626,10 +733,7 @@ if (-not $VerifyOnly) {
 }
 
 # Verification Section
-Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "                    Verification" -ForegroundColor Cyan
-Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host ""
+Write-SectionHeader "Verification"
 
 # Initialize verification tracking
 $script:verificationResults = @{
@@ -779,178 +883,341 @@ if ($VerifyOnly) {
         $overallStatus = "WARN"
     }
 
-    # Set header color based on status
-    $headerColor = switch ($overallStatus) {
-        "PASS" { "Green" }
-        "WARN" { "Yellow" }
-        "FAIL" { "Red" }
-    }
-
-    Write-Host "================================================================" -ForegroundColor $headerColor
-    Write-Host "                 VERIFICATION REPORT" -ForegroundColor $headerColor
-    Write-Host "================================================================" -ForegroundColor $headerColor
-    Write-Host ""
-
-    # Overall Status
-    Write-Host "  Overall Status: " -NoNewline
-    switch ($overallStatus) {
-        "PASS" { Write-Host "ALL CHECKS PASSED" -ForegroundColor Green }
-        "WARN" { Write-Host "PASSED WITH WARNINGS" -ForegroundColor Yellow }
-        "FAIL" { Write-Host "SOME CHECKS FAILED" -ForegroundColor Red }
-    }
-    Write-Host ""
-    Write-Host "  Dev Drive: $devDrive" -ForegroundColor Gray
-    Write-Host ""
-
-    # Package Managers Detected
-    Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
-    Write-Host "  PACKAGE MANAGERS DETECTED" -ForegroundColor Cyan
-    Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
-    foreach ($pm in $detectedManagers) {
-        Write-Host "    - $($pm.Name)" -ForegroundColor Gray
-    }
-    Write-Host ""
-
-    # Environment Variables Status
-    Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
-    Write-Host "  ENVIRONMENT VARIABLES" -ForegroundColor Cyan
-    Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
-
-    if ($script:verificationResults.EnvVarsPassed.Count -gt 0) {
-        Write-Host "  Configured correctly:" -ForegroundColor Green
-        foreach ($ev in $script:verificationResults.EnvVarsPassed) {
-            Write-Host "    [OK] $($ev.Name)" -ForegroundColor Green
-            Write-Host "         $($ev.EnvVar) = $($ev.Value)" -ForegroundColor Gray
-        }
-    }
-
-    if ($script:verificationResults.EnvVarsFailed.Count -gt 0) {
+    if ($global:UseSpectreConsole) {
+        # Spectre.Console formatted report
         Write-Host ""
-        Write-Host "  Not pointing to Dev Drive:" -ForegroundColor Yellow
-        foreach ($ev in $script:verificationResults.EnvVarsFailed) {
-            Write-Host "    [WARN] $($ev.Name)" -ForegroundColor Yellow
-            Write-Host "           Current:  $($ev.Current)" -ForegroundColor Gray
-            Write-Host "           Expected: $($ev.Expected)" -ForegroundColor Gray
-        }
-    }
-
-    if ($script:verificationResults.EnvVarsNotSet.Count -gt 0) {
+        Write-SpectreRule -Title "VERIFICATION REPORT"
         Write-Host ""
-        Write-Host "  Not configured:" -ForegroundColor Red
-        foreach ($ev in $script:verificationResults.EnvVarsNotSet) {
-            Write-Host "    [FAIL] $($ev.Name)" -ForegroundColor Red
-            Write-Host "           $($ev.EnvVar) is not set" -ForegroundColor Gray
+
+        $statusText = switch ($overallStatus) {
+            "PASS" { "[green]✓ ALL CHECKS PASSED[/]" }
+            "WARN" { "[yellow]⚠ PASSED WITH WARNINGS[/]" }
+            "FAIL" { "[red]✗ SOME CHECKS FAILED[/]" }
         }
-    }
-    Write-Host ""
 
-    # Cache Directories Status
-    Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
-    Write-Host "  CACHE DIRECTORIES ON DEV DRIVE" -ForegroundColor Cyan
-    Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
-
-    if ($script:verificationResults.DirsExist.Count -gt 0) {
-        foreach ($dir in $script:verificationResults.DirsExist) {
-            Write-Host "    [OK] $($dir.Name): $($dir.SizeMB) MB" -ForegroundColor Green
-            Write-Host "         $($dir.Path)" -ForegroundColor Gray
-        }
-    }
-
-    if ($script:verificationResults.DirsMissing.Count -gt 0) {
+        Write-SpectreHost "Overall Status: $statusText"
+        Write-SpectreHost "Dev Drive: [cyan]$devDrive[/]"
         Write-Host ""
-        foreach ($dir in $script:verificationResults.DirsMissing) {
-            Write-Host "    [WARN] $($dir.Name): Directory not found" -ForegroundColor Yellow
-            Write-Host "           $($dir.Path)" -ForegroundColor Gray
-        }
-    }
 
-    Write-Host ""
-    Write-Host "  Total cache size on Dev Drive: $([math]::Round($script:verificationResults.TotalCacheSizeMB, 2)) MB" -ForegroundColor Cyan
-    Write-Host ""
+        # Environment Variables Table
+        if ($script:verificationResults.EnvVarsPassed.Count -gt 0 -or
+            $script:verificationResults.EnvVarsFailed.Count -gt 0 -or
+            $script:verificationResults.EnvVarsNotSet.Count -gt 0) {
 
-    # NuGet Status (if applicable)
-    $nugetManager = $detectedManagers | Where-Object { $_.Name -eq "NuGet (.NET)" }
-    if ($nugetManager) {
-        Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
-        Write-Host "  NUGET VERIFICATION" -ForegroundColor Cyan
-        Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+            Write-SpectreHost "[cyan]ENVIRONMENT VARIABLES[/]"
+            Write-Host ""
 
-        switch ($script:verificationResults.NuGetStatus) {
-            "OK" {
-                Write-Host "    [OK] NuGet is using Dev Drive" -ForegroundColor Green
-                Write-Host "         $($script:verificationResults.NuGetPath)" -ForegroundColor Gray
+            $envTableData = @()
+
+            foreach ($ev in $script:verificationResults.EnvVarsPassed) {
+                $envTableData += [PSCustomObject]@{
+                    Status = "[green]✓[/]"
+                    PackageManager = $ev.Name
+                    Variable = $ev.EnvVar
+                    Value = $ev.Value
+                }
             }
-            "PENDING_RESTART" {
-                Write-Host "    [WARN] NuGet not yet using Dev Drive (restart required)" -ForegroundColor Yellow
-                Write-Host "          Current: $($script:verificationResults.NuGetPath)" -ForegroundColor Gray
+
+            foreach ($ev in $script:verificationResults.EnvVarsFailed) {
+                $envTableData += [PSCustomObject]@{
+                    Status = "[yellow]⚠[/]"
+                    PackageManager = $ev.Name
+                    Variable = $ev.EnvVar
+                    Value = "Current: $($ev.Current)`nExpected: $($ev.Expected)"
+                }
             }
-            "ERROR" {
-                Write-Host "    [WARN] Could not verify NuGet path" -ForegroundColor Yellow
+
+            foreach ($ev in $script:verificationResults.EnvVarsNotSet) {
+                $envTableData += [PSCustomObject]@{
+                    Status = "[red]✗[/]"
+                    PackageManager = $ev.Name
+                    Variable = $ev.EnvVar
+                    Value = "NOT SET (Expected: $($ev.Expected))"
+                }
             }
-            default {
-                Write-Host "    [WARN] NuGet status unknown" -ForegroundColor Yellow
-            }
+
+            $envTableData | Format-SpectreTable -Border Rounded
+            Write-Host ""
         }
-        Write-Host ""
-        Write-Host "  Note: There is a known issue where 'dotnet tool' commands" -ForegroundColor Gray
-        Write-Host "  may not respect NUGET_PACKAGES. Fix planned for .NET 10." -ForegroundColor Gray
-        Write-Host ""
-    }
 
-    # Final Summary
-    Write-Host "================================================================" -ForegroundColor $headerColor
-    $passedCount = $script:verificationResults.EnvVarsPassed.Count
-    $totalCount = $detectedManagers.Count
+        # Cache Directories Table
+        if ($script:verificationResults.DirsExist.Count -gt 0 -or $script:verificationResults.DirsMissing.Count -gt 0) {
+            Write-SpectreHost "[cyan]CACHE DIRECTORIES ON DEV DRIVE[/]"
+            Write-Host ""
 
-    if ($overallStatus -eq "PASS") {
-        Write-Success "All $passedCount of $totalCount package manager(s) verified successfully!"
-    } elseif ($overallStatus -eq "WARN") {
-        Write-Warning "Verification completed with warnings. Review items above."
-        if ($script:verificationResults.NuGetStatus -eq "PENDING_RESTART") {
-            Write-Info "A system restart may be required for all changes to take effect."
+            $dirTableData = @()
+
+            foreach ($dir in $script:verificationResults.DirsExist) {
+                $dirTableData += [PSCustomObject]@{
+                    Status = "[green]✓[/]"
+                    PackageManager = $dir.Name
+                    Path = $dir.Path
+                    Size = "$($dir.SizeMB) MB"
+                }
+            }
+
+            foreach ($dir in $script:verificationResults.DirsMissing) {
+                $dirTableData += [PSCustomObject]@{
+                    Status = "[yellow]⚠[/]"
+                    PackageManager = $dir.Name
+                    Path = $dir.Path
+                    Size = "N/A"
+                }
+            }
+
+            $dirTableData | Format-SpectreTable -Border Rounded
+            Write-Host ""
+            Write-SpectreHost "Total cache size: [cyan]$([math]::Round($script:verificationResults.TotalCacheSizeMB, 2)) MB[/]"
+            Write-Host ""
+        }
+
+        # NuGet Status
+        $nugetManager = $detectedManagers | Where-Object { $_.Name -eq "NuGet (.NET)" }
+        if ($nugetManager) {
+            Write-SpectreHost "[cyan]NUGET VERIFICATION[/]"
+            Write-Host ""
+
+            switch ($script:verificationResults.NuGetStatus) {
+                "OK" {
+                    Write-SpectreHost "[green]✓[/] NuGet is using Dev Drive"
+                    Write-SpectreHost "  [grey]$($script:verificationResults.NuGetPath)[/]"
+                }
+                "PENDING_RESTART" {
+                    Write-SpectreHost "[yellow]⚠[/] NuGet not yet using Dev Drive (restart required)"
+                    Write-SpectreHost "  [grey]Current: $($script:verificationResults.NuGetPath)[/]"
+                }
+                "ERROR" {
+                    Write-SpectreHost "[yellow]⚠[/] Could not verify NuGet path"
+                }
+                default {
+                    Write-SpectreHost "[yellow]⚠[/] NuGet status unknown"
+                }
+            }
+            Write-Host ""
+            Write-SpectreHost "[grey]Note: There is a known issue where 'dotnet tool' commands may not respect NUGET_PACKAGES. Fix planned for .NET 10.[/]"
+            Write-Host ""
+        }
+
+        # Final Summary
+        $passedCount = $script:verificationResults.EnvVarsPassed.Count
+        $totalCount = $detectedManagers.Count
+
+        if ($overallStatus -eq "PASS") {
+            Write-Success "All $passedCount of $totalCount package manager(s) verified successfully!"
+        } elseif ($overallStatus -eq "WARN") {
+            Write-Warning "Verification completed with warnings. Review items above."
+            if ($script:verificationResults.NuGetStatus -eq "PENDING_RESTART") {
+                Write-Info "A system restart may be required for all changes to take effect."
+            }
+        } else {
+            Write-Error "Verification failed. Some package managers need configuration."
+            Write-Info "Run this script without -VerifyOnly to configure missing items."
         }
     } else {
-        Write-Error "Verification failed. Some package managers need configuration."
-        Write-Info "Run this script without -VerifyOnly to configure missing items."
+        # Original formatted report (fallback)
+        Write-Host "================================================================" -ForegroundColor $headerColor
+        Write-Host "                 VERIFICATION REPORT" -ForegroundColor $headerColor
+        Write-Host "================================================================" -ForegroundColor $headerColor
+        Write-Host ""
+
+        # Overall Status
+        Write-Host "  Overall Status: " -NoNewline
+        switch ($overallStatus) {
+            "PASS" { Write-Host "ALL CHECKS PASSED" -ForegroundColor Green }
+            "WARN" { Write-Host "PASSED WITH WARNINGS" -ForegroundColor Yellow }
+            "FAIL" { Write-Host "SOME CHECKS FAILED" -ForegroundColor Red }
+        }
+        Write-Host ""
+        Write-Host "  Dev Drive: $devDrive" -ForegroundColor Gray
+        Write-Host ""
+
+        # Package Managers Detected
+        Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+        Write-Host "  PACKAGE MANAGERS DETECTED" -ForegroundColor Cyan
+        Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+        foreach ($pm in $detectedManagers) {
+            Write-Host "    - $($pm.Name)" -ForegroundColor Gray
+        }
+        Write-Host ""
+
+        # Environment Variables Status
+        Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+        Write-Host "  ENVIRONMENT VARIABLES" -ForegroundColor Cyan
+        Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+
+        if ($script:verificationResults.EnvVarsPassed.Count -gt 0) {
+            Write-Host "  Configured correctly:" -ForegroundColor Green
+            foreach ($ev in $script:verificationResults.EnvVarsPassed) {
+                Write-Host "    [OK] $($ev.Name)" -ForegroundColor Green
+                Write-Host "         $($ev.EnvVar) = $($ev.Value)" -ForegroundColor Gray
+            }
+        }
+
+        if ($script:verificationResults.EnvVarsFailed.Count -gt 0) {
+            Write-Host ""
+            Write-Host "  Not pointing to Dev Drive:" -ForegroundColor Yellow
+            foreach ($ev in $script:verificationResults.EnvVarsFailed) {
+                Write-Host "    [WARN] $($ev.Name)" -ForegroundColor Yellow
+                Write-Host "           Current:  $($ev.Current)" -ForegroundColor Gray
+                Write-Host "           Expected: $($ev.Expected)" -ForegroundColor Gray
+            }
+        }
+
+        if ($script:verificationResults.EnvVarsNotSet.Count -gt 0) {
+            Write-Host ""
+            Write-Host "  Not configured:" -ForegroundColor Red
+            foreach ($ev in $script:verificationResults.EnvVarsNotSet) {
+                Write-Host "    [FAIL] $($ev.Name)" -ForegroundColor Red
+                Write-Host "           $($ev.EnvVar) is not set" -ForegroundColor Gray
+            }
+        }
+        Write-Host ""
+
+        # Cache Directories Status
+        Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+        Write-Host "  CACHE DIRECTORIES ON DEV DRIVE" -ForegroundColor Cyan
+        Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+
+        if ($script:verificationResults.DirsExist.Count -gt 0) {
+            foreach ($dir in $script:verificationResults.DirsExist) {
+                Write-Host "    [OK] $($dir.Name): $($dir.SizeMB) MB" -ForegroundColor Green
+                Write-Host "         $($dir.Path)" -ForegroundColor Gray
+            }
+        }
+
+        if ($script:verificationResults.DirsMissing.Count -gt 0) {
+            Write-Host ""
+            foreach ($dir in $script:verificationResults.DirsMissing) {
+                Write-Host "    [WARN] $($dir.Name): Directory not found" -ForegroundColor Yellow
+                Write-Host "           $($dir.Path)" -ForegroundColor Gray
+            }
+        }
+
+        Write-Host ""
+        Write-Host "  Total cache size on Dev Drive: $([math]::Round($script:verificationResults.TotalCacheSizeMB, 2)) MB" -ForegroundColor Cyan
+        Write-Host ""
+
+        # NuGet Status (if applicable)
+        $nugetManager = $detectedManagers | Where-Object { $_.Name -eq "NuGet (.NET)" }
+        if ($nugetManager) {
+            Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+            Write-Host "  NUGET VERIFICATION" -ForegroundColor Cyan
+            Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+
+            switch ($script:verificationResults.NuGetStatus) {
+                "OK" {
+                    Write-Host "    [OK] NuGet is using Dev Drive" -ForegroundColor Green
+                    Write-Host "         $($script:verificationResults.NuGetPath)" -ForegroundColor Gray
+                }
+                "PENDING_RESTART" {
+                    Write-Host "    [WARN] NuGet not yet using Dev Drive (restart required)" -ForegroundColor Yellow
+                    Write-Host "          Current: $($script:verificationResults.NuGetPath)" -ForegroundColor Gray
+                }
+                "ERROR" {
+                    Write-Host "    [WARN] Could not verify NuGet path" -ForegroundColor Yellow
+                }
+                default {
+                    Write-Host "    [WARN] NuGet status unknown" -ForegroundColor Yellow
+                }
+            }
+            Write-Host ""
+            Write-Host "  Note: There is a known issue where 'dotnet tool' commands" -ForegroundColor Gray
+            Write-Host "  may not respect NUGET_PACKAGES. Fix planned for .NET 10." -ForegroundColor Gray
+            Write-Host ""
+        }
+
+        # Final Summary
+        Write-Host "================================================================" -ForegroundColor $headerColor
+        $passedCount = $script:verificationResults.EnvVarsPassed.Count
+        $totalCount = $detectedManagers.Count
+
+        if ($overallStatus -eq "PASS") {
+            Write-Success "All $passedCount of $totalCount package manager(s) verified successfully!"
+        } elseif ($overallStatus -eq "WARN") {
+            Write-Warning "Verification completed with warnings. Review items above."
+            if ($script:verificationResults.NuGetStatus -eq "PENDING_RESTART") {
+                Write-Info "A system restart may be required for all changes to take effect."
+            }
+        } else {
+            Write-Error "Verification failed. Some package managers need configuration."
+            Write-Info "Run this script without -VerifyOnly to configure missing items."
+        }
     }
 } else {
-    Write-Host "================================================================" -ForegroundColor Yellow
-    Write-Host "                     IMPORTANT NOTES" -ForegroundColor Yellow
-    Write-Host "================================================================" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Warning "1. RESTART REQUIRED: You must restart all open console windows"
-    Write-Warning "   or reboot your computer for the changes to take effect."
-    Write-Host ""
+    if ($global:UseSpectreConsole) {
+        Write-Host ""
+        Write-SpectreRule -Title "IMPORTANT NOTES"
+        Write-Host ""
 
-    # Check if verification showed issues that are likely due to needing a restart
-    $hasVerificationIssues = ($script:verificationResults.NuGetStatus -eq "PENDING_RESTART") -or
-                             ($script:verificationResults.EnvVarsFailed.Count -gt 0)
+        Write-SpectreHost "[yellow]⚠[/] [bold]RESTART REQUIRED[/]"
+        Write-SpectreHost "You must restart all open console windows or reboot your computer for the changes to take effect."
+        Write-Host ""
 
-    if ($hasVerificationIssues) {
-        Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
-        Write-Warning "2. VERIFICATION WARNINGS: Some verifications above may show warnings."
-        Write-Warning "   This is NORMAL on first run - environment variable changes require"
-        Write-Warning "   a restart before they take effect in running applications."
+        # Check if verification showed issues that are likely due to needing a restart
+        $hasVerificationIssues = ($script:verificationResults.NuGetStatus -eq "PENDING_RESTART") -or
+                                 ($script:verificationResults.EnvVarsFailed.Count -gt 0)
+
+        if ($hasVerificationIssues) {
+            Write-SpectreHost "[yellow]⚠[/] [bold]VERIFICATION WARNINGS[/]"
+            Write-SpectreHost "  Some verifications above may show warnings. This is NORMAL on first run -"
+            Write-SpectreHost "  environment variable changes require a restart before they take effect."
+            Write-Host ""
+            Write-SpectreHost "  After restarting, run this script again to verify everything is configured correctly:"
+            Write-SpectreHost "  [cyan].\Move-PackageCachesToDevDrive.ps1 -VerifyOnly[/]"
+            Write-Host ""
+        }
+
+        if ($detectedManagers | Where-Object { $_.Name -eq "NuGet (.NET)" }) {
+            Write-SpectreHost "[yellow]⚠[/] [bold]NuGet Note[/]"
+            Write-SpectreHost "  There is a known issue where 'dotnet tool' commands may not respect"
+            Write-SpectreHost "  the NUGET_PACKAGES path. A fix is planned for .NET 10 and servicing updates."
+            Write-Host ""
+        }
+
+        Write-SpectreHost "[cyan]ℹ[/] To verify the NuGet global-packages folder after restart, run:"
+        Write-SpectreHost "  [cyan]dotnet nuget locals global-packages --list[/]"
         Write-Host ""
-        Write-Info "   After restarting, run this script again to verify everything is"
-        Write-Info "   configured correctly:"
+
+        Write-Success "Script completed! Remember to restart before running verification."
+    } else {
+        Write-Host "================================================================" -ForegroundColor Yellow
+        Write-Host "                     IMPORTANT NOTES" -ForegroundColor Yellow
+        Write-Host "================================================================" -ForegroundColor Yellow
         Write-Host ""
-        Write-Info "     .\Move-PackageCachesToDevDrive.ps1 -VerifyOnly"
+        Write-Warning "1. RESTART REQUIRED: You must restart all open console windows"
+        Write-Warning "   or reboot your computer for the changes to take effect."
         Write-Host ""
-        Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+
+        # Check if verification showed issues that are likely due to needing a restart
+        $hasVerificationIssues = ($script:verificationResults.NuGetStatus -eq "PENDING_RESTART") -or
+                                 ($script:verificationResults.EnvVarsFailed.Count -gt 0)
+
+        if ($hasVerificationIssues) {
+            Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+            Write-Warning "2. VERIFICATION WARNINGS: Some verifications above may show warnings."
+            Write-Warning "   This is NORMAL on first run - environment variable changes require"
+            Write-Warning "   a restart before they take effect in running applications."
+            Write-Host ""
+            Write-Info "   After restarting, run this script again to verify everything is"
+            Write-Info "   configured correctly:"
+            Write-Host ""
+            Write-Info "     .\Move-PackageCachesToDevDrive.ps1 -VerifyOnly"
+            Write-Host ""
+            Write-Host "----------------------------------------------------------------" -ForegroundColor DarkGray
+        }
+
+        if ($detectedManagers | Where-Object { $_.Name -eq "NuGet (.NET)" }) {
+            Write-Warning "3. NuGet Note: There is a known issue where 'dotnet tool' commands"
+            Write-Warning "   may not respect the NUGET_PACKAGES path. A fix is planned for"
+            Write-Warning "   .NET 10 and servicing updates for 8.0 and 9.0."
+            Write-Host ""
+        }
+
+        Write-Warning "4. To verify the NuGet global-packages folder after restart, run:"
+        Write-Info "   dotnet nuget locals global-packages --list"
+        Write-Host ""
+
+        Write-Success "Script completed! Remember to restart before running verification."
     }
-
-    if ($detectedManagers | Where-Object { $_.Name -eq "NuGet (.NET)" }) {
-        Write-Warning "3. NuGet Note: There is a known issue where 'dotnet tool' commands"
-        Write-Warning "   may not respect the NUGET_PACKAGES path. A fix is planned for"
-        Write-Warning "   .NET 10 and servicing updates for 8.0 and 9.0."
-        Write-Host ""
-    }
-
-    Write-Warning "4. To verify the NuGet global-packages folder after restart, run:"
-    Write-Info "   dotnet nuget locals global-packages --list"
-    Write-Host ""
-
-    Write-Success "Script completed! Remember to restart before running verification."
 }
 Write-Host ""
